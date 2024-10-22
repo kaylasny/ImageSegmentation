@@ -90,6 +90,7 @@ class OutConv(nn.Sequential):
             nn.Conv2d(in_channels, num_classes, kernel_size=1)
         )
 
+
 class UNetWithAttention(nn.Module):
     def __init__(self, in_channels: int = 3, num_classes: int = 3, bilinear: bool = True, base_c: int = 64):
         super(UNetWithAttention, self).__init__()
@@ -139,8 +140,6 @@ class UNetWithAttention(nn.Module):
         x = self.se8(x)
         logits = self.out_conv(x)
         return logits
-
-
 
 
 # IoU计算函数
