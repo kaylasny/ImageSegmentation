@@ -24,7 +24,23 @@ dataset = TensorDataset(images_tensor, labels_tensor)
 train_loader = DataLoader(dataset, batch_size=8, shuffle=True)
 
 
-# UNet模型定义
+# attention_UNet模型定义
+class SEBlock(nn.Module):
+    def __init__(self, in_channels, reduction=16):
+        super(SEBlock, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 全局平均池化
+        self.fc = nn.Sequential(
+            nn.Linear(in_channels, in_channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(in_channels // reduction, in_channels, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
 class DoubleConv(nn.Sequential):
     def __init__(self, in_channels, out_channels, mid_channels=None):
         if mid_channels is None:
@@ -74,36 +90,53 @@ class OutConv(nn.Sequential):
             nn.Conv2d(in_channels, num_classes, kernel_size=1)
         )
 
-
-class UNet(nn.Module):
+class UNetWithAttention(nn.Module):
     def __init__(self, in_channels: int = 3, num_classes: int = 3, bilinear: bool = True, base_c: int = 64):
-        super(UNet, self).__init__()
+        super(UNetWithAttention, self).__init__()
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.bilinear = bilinear
 
+        # 下采样部分
         self.in_conv = DoubleConv(in_channels, base_c)
+        self.se1 = SEBlock(base_c)  # 注意力模块
         self.down1 = Down(base_c, base_c * 2)
+        self.se2 = SEBlock(base_c * 2)  # 注意力模块
         self.down2 = Down(base_c * 2, base_c * 4)
+        self.se3 = SEBlock(base_c * 4)  # 注意力模块
         self.down3 = Down(base_c * 4, base_c * 8)
         factor = 2 if bilinear else 1
         self.down4 = Down(base_c * 8, base_c * 16 // factor)
+        self.se4 = SEBlock(base_c * 16 // factor)  # 注意力模块
+
+        # 上采样部分
         self.up1 = Up(base_c * 16, base_c * 8 // factor, bilinear)
+        self.se5 = SEBlock(base_c * 8 // factor)  # 注意力模块
         self.up2 = Up(base_c * 8, base_c * 4 // factor, bilinear)
+        self.se6 = SEBlock(base_c * 4 // factor)  # 注意力模块
         self.up3 = Up(base_c * 4, base_c * 2 // factor, bilinear)
+        self.se7 = SEBlock(base_c * 2 // factor)  # 注意力模块
         self.up4 = Up(base_c * 2, base_c, bilinear)
+        self.se8 = SEBlock(base_c)  # 注意力模块
+
+        # 输出层
         self.out_conv = OutConv(base_c, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x1 = self.in_conv(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
+        x1 = self.se1(self.in_conv(x))
+        x2 = self.se2(self.down1(x1))
+        x3 = self.se3(self.down2(x2))
+        x4 = self.se4(self.down3(x3))
         x5 = self.down4(x4)
+
         x = self.up1(x5, x4)
+        x = self.se5(x)
         x = self.up2(x, x3)
+        x = self.se6(x)
         x = self.up3(x, x2)
+        x = self.se7(x)
         x = self.up4(x, x1)
+        x = self.se8(x)
         logits = self.out_conv(x)
         return logits
 
@@ -138,7 +171,7 @@ def calculate_iou(pred: torch.Tensor, target: torch.Tensor) -> float:
 # 主程序
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = UNet(in_channels=1, num_classes=4).to(device)
+    model = UNetWithAttention(in_channels=1, num_classes=4).to(device)
 
     # 定义损失函数和优化器
     criterion = nn.CrossEntropyLoss()
@@ -185,7 +218,7 @@ if __name__ == '__main__':
         previous_loss = epoch_loss  # 更新前一轮损失
 
     # 保存整个模型
-    torch.save(model, '../model/UNet_model.pth')
+    torch.save(model, '../model/attention_UNet_model.pth')
     print("Model saved to 'model.pth'")
 
     print("Training complete.")
