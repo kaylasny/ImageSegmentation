@@ -4,8 +4,25 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch.nn.functional as F
 from tqdm import tqdm
 import torch.nn as nn
+import math
 
-# 定义 UNet 类
+# UNet模型定义
+class SEBlock(nn.Module):
+    def __init__(self, in_channels, reduction=16):
+        super(SEBlock, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 全局平均池化
+        self.fc = nn.Sequential(
+            nn.Linear(in_channels, in_channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(in_channels // reduction, in_channels, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
 class DoubleConv(nn.Sequential):
     def __init__(self, in_channels, out_channels, mid_channels=None):
         if mid_channels is None:
@@ -19,12 +36,14 @@ class DoubleConv(nn.Sequential):
             nn.ReLU(inplace=True)
         )
 
+
 class Down(nn.Sequential):
     def __init__(self, in_channels, out_channels):
         super(Down, self).__init__(
             nn.MaxPool2d(2, stride=2),
             DoubleConv(in_channels, out_channels)
         )
+
 
 class Up(nn.Module):
     def __init__(self, in_channels, out_channels, bilinear=True):
@@ -38,7 +57,6 @@ class Up(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
         x1 = self.up(x1)
-        # 根据 x2 和 x1 大小调整 x1 的 padding
         diff_y = x2.size()[2] - x1.size()[2]
         diff_x = x2.size()[3] - x1.size()[3]
         x1 = F.pad(x1, [diff_x // 2, diff_x - diff_x // 2,
@@ -47,58 +65,72 @@ class Up(nn.Module):
         x = self.conv(x)
         return x
 
+
 class OutConv(nn.Sequential):
     def __init__(self, in_channels, num_classes):
         super(OutConv, self).__init__(
             nn.Conv2d(in_channels, num_classes, kernel_size=1)
         )
 
-class UNet(nn.Module):
-    def __init__(self, in_channels: int = 1, num_classes: int = 3, bilinear: bool = True, base_c: int = 64):
-        super(UNet, self).__init__()
+class UNetWithAttention(nn.Module):
+    def __init__(self, in_channels: int = 3, num_classes: int = 3, bilinear: bool = True, base_c: int = 64):
+        super(UNetWithAttention, self).__init__()
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.bilinear = bilinear
 
-        # 定义 U-Net 结构
+        # 下采样部分
         self.in_conv = DoubleConv(in_channels, base_c)
+        self.se1 = SEBlock(base_c)  # 注意力模块
         self.down1 = Down(base_c, base_c * 2)
+        self.se2 = SEBlock(base_c * 2)  # 注意力模块
         self.down2 = Down(base_c * 2, base_c * 4)
+        self.se3 = SEBlock(base_c * 4)  # 注意力模块
         self.down3 = Down(base_c * 4, base_c * 8)
         factor = 2 if bilinear else 1
         self.down4 = Down(base_c * 8, base_c * 16 // factor)
+        self.se4 = SEBlock(base_c * 16 // factor)  # 注意力模块
 
+        # 上采样部分
         self.up1 = Up(base_c * 16, base_c * 8 // factor, bilinear)
+        self.se5 = SEBlock(base_c * 8 // factor)  # 注意力模块
         self.up2 = Up(base_c * 8, base_c * 4 // factor, bilinear)
+        self.se6 = SEBlock(base_c * 4 // factor)  # 注意力模块
         self.up3 = Up(base_c * 4, base_c * 2 // factor, bilinear)
+        self.se7 = SEBlock(base_c * 2 // factor)  # 注意力模块
         self.up4 = Up(base_c * 2, base_c, bilinear)
+        self.se8 = SEBlock(base_c)  # 注意力模块
 
+        # 输出层
         self.out_conv = OutConv(base_c, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x1 = self.in_conv(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
+        x1 = self.se1(self.in_conv(x))
+        x2 = self.se2(self.down1(x1))
+        x3 = self.se3(self.down2(x2))
+        x4 = self.se4(self.down3(x3))
         x5 = self.down4(x4)
 
         x = self.up1(x5, x4)
+        x = self.se5(x)
         x = self.up2(x, x3)
+        x = self.se6(x)
         x = self.up3(x, x2)
+        x = self.se7(x)
         x = self.up4(x, x1)
+        x = self.se8(x)
         logits = self.out_conv(x)
         return logits
 
+
 # 加载模型
-model = torch.load('./models/UNet_model.pth')  # 直接加载模型
-model.eval()  # 设置模型为评估模式
+model = torch.load('../UNet_model.pth')
+model.eval()
 
 # 定义测试集张量
-# 假设你已经有 test_images_tensor 和 test_labels_tensor
-test_images_tensor = torch.load('./tensors/images_test_tensors.pt')  # (N, H, W)
-test_labels_tensor = torch.load('./tensors/annotations_test_tensors.pt')  # (N, H, W)
+test_images_tensor = torch.load('../tensors/images_test_tensors.pt')
+test_labels_tensor = torch.load('../tensors/annotations_test_tensors.pt')
 
-# 增加通道维度，确保形状为 (N, 1, H, W)
 test_images_tensor = test_images_tensor.unsqueeze(1)
 test_labels_tensor = test_labels_tensor.unsqueeze(1)
 
@@ -109,7 +141,7 @@ test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 # IoU 计算函数
 def calculate_iou(pred, target):
     ious = []
-    pred = torch.argmax(pred, dim=1)  # 预测类别的 mask
+    pred = torch.argmax(pred, dim=1)
     unique_labels = torch.unique(target)
 
     for cls in unique_labels:
@@ -121,10 +153,7 @@ def calculate_iou(pred, target):
         intersection = torch.sum((pred_class & target_class).float())
         union = torch.sum((pred_class | target_class).float())
 
-        if union == 0:
-            iou = torch.tensor(float('nan'))
-        else:
-            iou = intersection / union
+        iou = intersection / union if union != 0 else torch.tensor(float('nan'))
         ious.append(iou)
 
     return torch.nanmean(torch.tensor(ious)), ious
@@ -144,24 +173,18 @@ with torch.no_grad():
         for images, gt_labels in test_loader:
             images, gt_labels = images.to(device), gt_labels.to(device)
 
-            # 开始计时
             start_time = time.time()
-
-            # 前向传播，生成 mask
             outputs = model(images)
-            outputs = F.softmax(outputs, dim=1)  # 使用 softmax 获取概率
+            outputs = F.softmax(outputs, dim=1)
 
-            # 结束计时
             end_time = time.time()
             total_time += end_time - start_time
 
-            # 计算 IoU
             avg_iou, ious_per_class = calculate_iou(outputs, gt_labels.squeeze(1))
             total_iou += avg_iou.item()
             ious_list.append(ious_per_class)
             total_images += 1
 
-            # 更新进度条
             pbar.set_postfix(avg_iou=avg_iou.item())
             pbar.update(1)
 
@@ -169,9 +192,45 @@ with torch.no_grad():
 mean_iou = total_iou / total_images
 fps = total_images / total_time
 
+# 计算模型参数量
+num_params = sum(p.numel() for p in model.parameters())
+
 # 输出结果
 print(f"平均交并比（Mean IoU）: {mean_iou:.4f}")
 print(f"每秒帧数（FPS）: {fps:.2f}")
+print(f"模型参数量: {num_params / 1e6:.2f}MB")  # 转换为 MB
+
+# 定义类别名称
+class_names = {
+    1: "缺陷类型 1",
+    2: "缺陷类型 2",
+    3: "缺陷类型 3"
+}
+
+# 定义每个缺陷类别的 IoU 存储
+class_iou_sum = {1: 0.0, 2: 0.0, 3: 0.0}
+class_iou_count = {1: 0, 2: 0, 3: 0}
 
 for i, ious_per_image in enumerate(ious_list):
-    print(f"测试图片 {i+1} 的各类缺陷交并比: {ious_per_image}")
+    ious_per_image = [iou.item() for iou in ious_per_image]  # 转换为浮点数
+    output_str = f"测试图片 {i + 1} 的各类缺陷交并比: "
+    output_str += ", ".join(f"{class_names[j]}: {ious_per_image[j-1]:.2f}" for j in range(1, len(ious_per_image) + 1))
+    print(output_str)
+
+    # 累加每类缺陷的 IoU
+    for j in range(1, len(ious_per_image) + 1):
+        if not math.isnan(ious_per_image[j-1]):
+            class_iou_sum[j] += ious_per_image[j-1]
+            class_iou_count[j] += 1
+
+# 计算每类缺陷的平均 IoU
+average_iou = {cls: (class_iou_sum[cls] / class_iou_count[cls] if class_iou_count[cls] > 0 else float('nan')) for cls in class_iou_sum}
+
+# 输出每类缺陷的平均 IoU
+for cls, avg in average_iou.items():
+    print(f"{class_names[cls]} 的平均 IoU: {avg:.2f}")
+
+
+
+
+
