@@ -124,12 +124,12 @@ class UNetWithAttention(nn.Module):
 
 
 # 加载模型
-model = torch.load('../model/attention_UNet_model.pth')
+model = torch.load('./models/attention_UNet_model.pth')
 model.eval()
 
 # 定义测试集张量
-test_images_tensor = torch.load('../tensors/images_test_tensors.pt')
-test_labels_tensor = torch.load('../tensors/annotations_test_tensors.pt')
+test_images_tensor = torch.load('./tensors/images_test_tensors.pt')
+test_labels_tensor = torch.load('./tensors/annotations_test_tensors.pt')
 
 test_images_tensor = test_images_tensor.unsqueeze(1)
 test_labels_tensor = test_labels_tensor.unsqueeze(1)
