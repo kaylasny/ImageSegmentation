@@ -8,8 +8,8 @@ from torchvision import transforms
 from tqdm import tqdm
 
 # 定义数据集路径
-images_tensor_path = '../tensors/images_training_tensors.pt'
-labels_tensor_path = '../tensors/annotations_training_tensors.pt'
+images_tensor_path = './tensors/images_training_tensors.pt'
+labels_tensor_path = './tensors/annotations_training_tensors.pt'
 
 # 加载数据
 images_tensor = torch.load(images_tensor_path)  # 输入数据
@@ -90,6 +90,7 @@ class OutConv(nn.Sequential):
             nn.Conv2d(in_channels, num_classes, kernel_size=1)
         )
 
+
 class UNetWithAttention(nn.Module):
     def __init__(self, in_channels: int = 3, num_classes: int = 3, bilinear: bool = True, base_c: int = 64):
         super(UNetWithAttention, self).__init__()
@@ -139,8 +140,6 @@ class UNetWithAttention(nn.Module):
         x = self.se8(x)
         logits = self.out_conv(x)
         return logits
-
-
 
 
 # IoU计算函数
@@ -218,7 +217,7 @@ if __name__ == '__main__':
         previous_loss = epoch_loss  # 更新前一轮损失
 
     # 保存整个模型
-    torch.save(model, '../model/attention_UNet_model.pth')
-    print("Model saved to 'model.pth'")
+    torch.save(model, './models/attention_UNet_model.pth')
+    print("Model saved to 'attention_UNet_model.pth'")
 
     print("Training complete.")

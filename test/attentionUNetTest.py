@@ -72,6 +72,7 @@ class OutConv(nn.Sequential):
             nn.Conv2d(in_channels, num_classes, kernel_size=1)
         )
 
+
 class UNetWithAttention(nn.Module):
     def __init__(self, in_channels: int = 3, num_classes: int = 3, bilinear: bool = True, base_c: int = 64):
         super(UNetWithAttention, self).__init__()
@@ -124,12 +125,12 @@ class UNetWithAttention(nn.Module):
 
 
 # 加载模型
-model = torch.load('../model/attention_UNet_model.pth')
+model = torch.load('./models/attention_UNet_model.pth')
 model.eval()
 
 # 定义测试集张量
-test_images_tensor = torch.load('../tensors/images_test_tensors.pt')
-test_labels_tensor = torch.load('../tensors/annotations_test_tensors.pt')
+test_images_tensor = torch.load('./tensors/images_test_tensors.pt')
+test_labels_tensor = torch.load('./tensors/annotations_test_tensors.pt')
 
 test_images_tensor = test_images_tensor.unsqueeze(1)
 test_labels_tensor = test_labels_tensor.unsqueeze(1)
@@ -229,8 +230,3 @@ average_iou = {cls: (class_iou_sum[cls] / class_iou_count[cls] if class_iou_coun
 # 输出每类缺陷的平均 IoU
 for cls, avg in average_iou.items():
     print(f"{class_names[cls]} 的平均 IoU: {avg:.2f}")
-
-
-
-
-

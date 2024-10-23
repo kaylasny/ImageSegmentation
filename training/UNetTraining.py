@@ -8,8 +8,8 @@ from torchvision import transforms
 from tqdm import tqdm
 
 # 定义数据集路径
-images_tensor_path = '../tensors/images_training_tensors.pt'
-labels_tensor_path = '../tensors/annotations_training_tensors.pt'
+images_tensor_path = './tensors/images_training_tensors.pt'
+labels_tensor_path = './tensors/annotations_training_tensors.pt'
 
 # 加载数据
 images_tensor = torch.load(images_tensor_path)  # 输入数据
@@ -185,7 +185,7 @@ if __name__ == '__main__':
         previous_loss = epoch_loss  # 更新前一轮损失
 
     # 保存整个模型
-    torch.save(model, '../model/UNet_model.pth')
-    print("Model saved to 'model.pth'")
+    torch.save(model, './models/UNet_model.pth')
+    print("Model saved to 'UNet_model.pth'")
 
     print("Training complete.")

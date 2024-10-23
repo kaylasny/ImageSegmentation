@@ -90,12 +90,12 @@ class UNet(nn.Module):
         return logits
 
 # 加载模型
-model = torch.load('../model/UNet_model.pth')
+model = torch.load('./models/UNet_model.pth')
 model.eval()
 
 # 定义测试集张量
-test_images_tensor = torch.load('../tensors/images_test_tensors.pt')
-test_labels_tensor = torch.load('../tensors/annotations_test_tensors.pt')
+test_images_tensor = torch.load('./tensors/images_test_tensors.pt')
+test_labels_tensor = torch.load('./tensors/annotations_test_tensors.pt')
 
 test_images_tensor = test_images_tensor.unsqueeze(1)
 test_labels_tensor = test_labels_tensor.unsqueeze(1)
@@ -195,8 +195,3 @@ average_iou = {cls: (class_iou_sum[cls] / class_iou_count[cls] if class_iou_coun
 # 输出每类缺陷的平均 IoU
 for cls, avg in average_iou.items():
     print(f"{class_names[cls]} 的平均 IoU: {avg:.2f}")
-
-
-
-
-
