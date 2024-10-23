@@ -18,6 +18,8 @@
 
 `training`：对模型进行训练
 
+`generate`：生成结果文件，前三个文件夹
+
 ## How to run the project
 
 1. 逐个运行 `./preprocessing` 文件夹中的文件
@@ -29,3 +31,4 @@
 ## Evaluation Metrics
 
 - Class1 IoU、Class2 IoU、Class3 IoU、mIoU 、FPS 、模型参数量
+
